@@ -5,29 +5,50 @@ import TimelineModal from "@/components/TimelineModal";
 import ContributorsSidebar from "@/components/ContributorsSidebar";
 import StaleIssuesSection from "@/components/StaleIssuesSection";
 import IssueFilters from "@/components/IssueFilters";
-import { Issue } from "@/types/github";
-import { dummyIssues, dummyContributors } from "@/lib/dummyData";
+import { Issue, Contributor } from "@/types/github";
 import { toast } from "sonner";
+import { fetchIssues, fetchContributors, parseRepoUrl } from "@/lib/githubApi";
 
 const Dashboard = () => {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [contributors, setContributors] = useState<Contributor[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [assignmentFilter, setAssignmentFilter] = useState("all");
   const [labelFilter, setLabelFilter] = useState("all");
+  const [currentRepo, setCurrentRepo] = useState<{ owner: string; repo: string } | null>(null);
 
-  const handleSearch = async (repo: string) => {
-    setIsLoading(true);
-    toast.info(`Searching for issues in ${repo}...`);
+  const handleSearch = async (repoInput: string) => {
+    const parsed = parseRepoUrl(repoInput);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIssues(dummyIssues);
+    if (!parsed) {
+      toast.error("Invalid repository format. Use: owner/repo or GitHub URL");
+      return;
+    }
+
+    setIsLoading(true);
+    setCurrentRepo(parsed);
+    toast.info(`Fetching issues from ${parsed.owner}/${parsed.repo}...`);
+    
+    try {
+      const [issuesData, contributorsData] = await Promise.all([
+        fetchIssues(parsed.owner, parsed.repo),
+        fetchContributors(parsed.owner, parsed.repo),
+      ]);
+      
+      setIssues(issuesData);
+      setContributors(contributorsData);
+      toast.success(`Found ${issuesData.length} issues`);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      toast.error("Failed to fetch repository data. Please check the repository name.");
+      setIssues([]);
+      setContributors([]);
+    } finally {
       setIsLoading(false);
-      toast.success(`Found ${dummyIssues.length} issues`);
-    }, 1500);
+    }
   };
 
   const handleViewTimeline = (issue: Issue) => {
@@ -107,7 +128,7 @@ const Dashboard = () => {
 
               {/* Contributors Sidebar */}
               <div>
-                <ContributorsSidebar contributors={dummyContributors} />
+                <ContributorsSidebar contributors={contributors} />
               </div>
             </div>
           </>

@@ -6,9 +6,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { GitBranch, UserPlus, GitPullRequest, GitMerge, MessageSquare } from "lucide-react";
+import { GitBranch, UserPlus, GitPullRequest, GitMerge, MessageSquare, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { getTimelineForIssue } from "@/lib/dummyData";
+import { fetchIssueTimeline, parseRepoUrl } from "@/lib/githubApi";
+import { useState, useEffect } from "react";
 
 interface TimelineModalProps {
   issue: Issue | null;
@@ -17,9 +18,36 @@ interface TimelineModalProps {
 }
 
 const TimelineModal = ({ issue, isOpen, onClose }: TimelineModalProps) => {
-  if (!issue) return null;
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const timeline = getTimelineForIssue(issue.number);
+  useEffect(() => {
+    if (!issue || !isOpen) return;
+
+    const loadTimeline = async () => {
+      setIsLoading(true);
+      try {
+        const repoInfo = parseRepoUrl(issue.html_url);
+        if (repoInfo) {
+          const timelineData = await fetchIssueTimeline(
+            repoInfo.owner,
+            repoInfo.repo,
+            issue.number
+          );
+          setTimeline(timelineData);
+        }
+      } catch (error) {
+        console.error("Error fetching timeline:", error);
+        setTimeline([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadTimeline();
+  }, [issue, isOpen]);
+
+  if (!issue) return null;
 
   const getIcon = (type: TimelineEvent["type"]) => {
     switch (type) {
@@ -45,8 +73,17 @@ const TimelineModal = ({ issue, isOpen, onClose }: TimelineModalProps) => {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 mt-4">
-          {timeline.map((event, index) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : timeline.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            No timeline events available
+          </div>
+        ) : (
+          <div className="space-y-6 mt-4">
+            {timeline.map((event, index) => (
             <div key={event.id} className="flex gap-4">
               <div className="flex flex-col items-center">
                 <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
@@ -82,7 +119,8 @@ const TimelineModal = ({ issue, isOpen, onClose }: TimelineModalProps) => {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
